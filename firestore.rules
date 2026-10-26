@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  // The secret 256-bit workspace ID grants access. Do not publish it.
+  function hasLink(workspace) {
+   return request.auth != null && workspace.matches('^[a-f0-9]{64}$');
+  }
+  match /workspaces/{workspace} {
+   allow get: if hasLink(workspace);
+   allow list, delete: if false;
+   allow create: if hasLink(workspace)
+    && request.resource.data.keys().hasOnly(['revision','updatedAt'])
+    && request.resource.data.revision == 1
+    && request.resource.data.updatedAt == request.time;
+   allow update: if hasLink(workspace)
+    && request.resource.data.keys().hasOnly(['revision','updatedAt'])
+    && request.resource.data.revision == resource.data.revision + 1
+    && request.resource.data.updatedAt == request.time;
+   function committedRevision() {
+    return getAfter(/databases/$(database)/documents/workspaces/$(workspace)).data.updatedAt == request.time;
+   }
+   match /posts/{post} {
+    allow read: if hasLink(workspace);
+    allow create, update: if hasLink(workspace) && committedRevision()
+     && request.resource.data.keys().hasOnly(['id','source','couple','date','url','text','visual','notes','status','coding'])
+     && request.resource.data.id == post
+     && request.resource.data.text is string
+     && request.resource.data.couple is string
+     && request.resource.data.source in ['אבות גאים בפונדקאות','פונדקאות - הקבוצה הפתוחה']
+     && request.resource.data.date is string
+     && request.resource.data.url is string
+     && request.resource.data.notes is string
+     && request.resource.data.visual is bool
+     && request.resource.data.status in ['טרם קודד','קידוד ראשוני','נבדק ואושר']
+     && request.resource.data.coding is list;
+    allow delete: if hasLink(workspace) && committedRevision();
+   }
+   match /codes/{code} {
+    allow read: if hasLink(workspace);
+    allow create, update: if hasLink(workspace) && committedRevision()
+     && request.resource.data.keys().hasOnly(['id','name','definition'])
+     && request.resource.data.id == code
+     && request.resource.data.name is string
+     && request.resource.data.definition is string;
+    allow delete: if hasLink(workspace) && committedRevision();
+   }
+  }
+ }
+}
